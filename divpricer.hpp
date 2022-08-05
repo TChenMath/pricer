@@ -17,24 +17,26 @@ struct Math {
 };
 
 struct BlackPricer {
-	BlackPricer(double K, double sigma, double fwd, double df) : 
-		K_(K), sigma_(sigma), fwd_(fwd), df_(df) {}
+	BlackPricer(int cp, double K, double sigma, double fwd, double df) : 
+		cp_(cp), K_(K), sigma_(sigma), fwd_(fwd), df_(df) {}
 
 	double tv();
 
 	double K_, sigma_, fwd_, df_;
+	int cp_;
 };
 
 struct MonteCarloPricer {
-	MonteCarloPricer(double K, double vol, double S0, double T, 
+	MonteCarloPricer(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, 
 	const std::vector<double>& ds, size_t npath) : 
-	K_(K), vol_(vol), S0_(S0), T_(T), r_(r), netrate_(netrate), 
+	cp_(cp), K_(K), vol_(vol), S0_(S0), T_(T), r_(r), netrate_(netrate), 
 	ts_(ts), ds_(ds), npath_(npath) {}
 
 	double tv();
 
 	double K_, vol_, S0_, T_, r_, netrate_;
+	int cp_;
 	std::vector<double> ts_, ds_;	// TBD: can be const reference	
 	size_t npath_;
 };
@@ -42,7 +44,7 @@ struct MonteCarloPricer {
 // base class
 struct EuropeanDivPricer {
 
-	EuropeanDivPricer(double K, double vol, double S0, double T, 
+	EuropeanDivPricer(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, 
 	const std::vector<double>& ds);
 
@@ -51,17 +53,20 @@ struct EuropeanDivPricer {
 	virtual void initialize();
 
 	void capFloorTV();
+	
+	void applyParityIfNeeded();
 
 	double K_, vol_, S0_, T_, r_, netrate_;
 	std::vector<double> ts_, ds_;	// TBD: can be const reference
 	// d1 = vol * sqrtt - zstar
 	double zstar_, fwd_, df_;
 	double tv0_;
+	int cp_;	// call +1, put -1
 };
 
 struct EuropeanDivPricer1 : public EuropeanDivPricer {
 
-	EuropeanDivPricer1(double K, double vol, double S0, double T, 
+	EuropeanDivPricer1(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, 
 	const std::vector<double>& ds);
 
@@ -75,7 +80,7 @@ struct EuropeanDivPricer1 : public EuropeanDivPricer {
 
 struct EuropeanDivPricer2 : public EuropeanDivPricer {
 
-	EuropeanDivPricer2(double K, double vol, double S0, double T, 
+	EuropeanDivPricer2(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, 
 	const std::vector<double>& ds);
 

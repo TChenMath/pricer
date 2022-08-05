@@ -65,6 +65,7 @@ void test(const std::vector<double>& ts, const std::vector<double> &ds)
 void testOne(const std::vector<double>& ts, const std::vector<double> &ds, 
 			double K, double vol, double T)
 {	
+	constexpr int cp = -1;
 	constexpr double S0 = 100;
 	constexpr double r = 0.02;
 	constexpr double netrate = 0.01;	// r - q
@@ -75,13 +76,13 @@ void testOne(const std::vector<double>& ts, const std::vector<double> &ds,
 		double tau = T - ts[i];
 		fwd -= ds[i] * std::exp(netrate * tau);
 	}
-	BlackPricer black(K, vol * std::sqrt(T), fwd, std::exp(-r * T));
+	BlackPricer black(cp, K, vol * std::sqrt(T), fwd, std::exp(-r * T));
 
-	MonteCarloPricer mc(K, vol, S0, T, r, netrate, ts, ds, npath);
+	MonteCarloPricer mc(cp, K, vol, S0, T, r, netrate, ts, ds, npath);
 
-	EuropeanDivPricer1 pricer1(K, vol, S0, T, r, netrate, ts, ds);
+	EuropeanDivPricer1 pricer1(cp, K, vol, S0, T, r, netrate, ts, ds);
 
-	EuropeanDivPricer2 pricer2(K, vol, S0, T, r, netrate, ts, ds);
+	EuropeanDivPricer2 pricer2(cp, K, vol, S0, T, r, netrate, ts, ds);
 
 	fprintf(stdout, "%10.2f%10.2f%10.2f%10f%10f%10f%10f%15.1f\n",
 		K, vol, T, black.tv(), mc.tv(), pricer1.tv(), pricer2.tv(), 
@@ -114,7 +115,10 @@ double BlackPricer::tv()
 {
 	const double d1 = std::log(fwd_ / K_) / sigma_ + 0.5 * sigma_;
 	const double d2 = d1 - sigma_;
-	return df_ * (fwd_ * Math::normalCDF(d1) - K_ * Math::normalCDF(d2));
+	double tv0 = df_ * (fwd_ * Math::normalCDF(d1) - K_ * Math::normalCDF(d2));
+	if (cp_ == -1)
+		tv0 = tv0 - df_ * (fwd_ - K_);
+	return tv0;
 }
 
 
@@ -147,7 +151,7 @@ double MonteCarloPricer::tv()
 			double tau = T_ - ts_[i];
 			res -= ds_[i] * std::exp((netrate_ - vol_ * vol_ / 2) * tau + vol_ * ws[i]);
 		}
-		payoff += std::max(0.0, res - K_);
+		payoff += std::max(0.0, cp_ * (res - K_));
 	}
 
 	const double df = std::exp(-r_ * T_);
@@ -156,9 +160,9 @@ double MonteCarloPricer::tv()
 
 
 
-EuropeanDivPricer::EuropeanDivPricer(double K, double vol, double S0, double T, 
+EuropeanDivPricer::EuropeanDivPricer(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, const std::vector<double>& ds) : 
-	K_(K), vol_(vol), S0_(S0), T_(T), r_(r), netrate_(netrate), ts_(ts), ds_(ds)
+	cp_(cp), K_(K), vol_(vol), S0_(S0), T_(T), r_(r), netrate_(netrate), ts_(ts), ds_(ds)
 {}
 
 
@@ -225,10 +229,14 @@ void EuropeanDivPricer::capFloorTV() {
 	tv0_ = std::min(std::max(lbd, tv0_), ubd);
 }
 
+void EuropeanDivPricer::applyParityIfNeeded() {
+	if (cp_ == -1)
+		tv0_ = tv0_ - df_ * (fwd_ - K_);
+}
 
-EuropeanDivPricer1::EuropeanDivPricer1(double K, double vol, double S0, double T, 
+EuropeanDivPricer1::EuropeanDivPricer1(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, const std::vector<double>& ds) : 
-	EuropeanDivPricer(K, vol, S0, T, r, netrate, ts, ds)
+	EuropeanDivPricer(cp, K, vol, S0, T, r, netrate, ts, ds)
 {}
 
 
@@ -259,14 +267,14 @@ double EuropeanDivPricer1::tv()
 		" - " << K_ * Math::normalCDF(d1_ - vol_ * sqrtt) << " = " << tv0_ << "\n";
 #endif
 	capFloorTV();
-		
+	applyParityIfNeeded();	
 	return tv0_;
 }
 
 
-EuropeanDivPricer2::EuropeanDivPricer2(double K, double vol, double S0, double T, 
+EuropeanDivPricer2::EuropeanDivPricer2(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, const std::vector<double>& ds) : 
-	EuropeanDivPricer(K, vol, S0, T, r, netrate, ts, ds)
+	EuropeanDivPricer(cp, K, vol, S0, T, r, netrate, ts, ds)
 {}
 
 
@@ -326,20 +334,19 @@ double EuropeanDivPricer2::tv()
 
 	for (size_t i = 0; i < ndiv; i++)
 		ds[i] = ds_[i] * ustar_;
-	EuropeanDivPricer1 p1(K_, vol_, S0_, T_, r_, netrate_, ts_, ds);
+	EuropeanDivPricer1 p1(1, K_, vol_, S0_, T_, r_, netrate_, ts_, ds);
 	const double tv1 = p1.tv();
 
 	for (size_t i = 0; i < ndiv; i++)
 		ds[i] = ds_[i] / ustar_;
-	EuropeanDivPricer1 p2(K_, vol_, S0_, T_, r_, netrate_, ts_, ds);
+	EuropeanDivPricer1 p2(1, K_, vol_, S0_, T_, r_, netrate_, ts_, ds);
 	const double tv2 = p2.tv();
 
 	tv0_ = tv1 / (1 + ustar_) + tv2 * ustar_ / (1 + ustar_);
 #if DEBUG
 	std::cout << "tv1 = " << tv1 << " tv2 = " << tv2 << " tv0 = " << tv0_ << "\n";
 #endif
-
 	capFloorTV();
-
+	applyParityIfNeeded();
 	return tv0_;
 }
