@@ -50,10 +50,12 @@ struct EuropeanDivPricer {
 
 	virtual void initialize();
 
+	void capFloorTV();
+
 	double K_, vol_, S0_, T_, r_, netrate_;
 	std::vector<double> ts_, ds_;	// TBD: can be const reference
 	// d1 = vol * sqrtt - zstar
-	double zstar_, fwd_;
+	double zstar_, fwd_, df_;
 	double tv0_;
 };
 
