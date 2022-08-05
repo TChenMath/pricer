@@ -5,6 +5,8 @@
 
 #define DEBUG 0
 
+#define TEST_GREEKS 0
+
 
 void test(const std::vector<double>& ts, const std::vector<double> &ds);
 
@@ -52,9 +54,14 @@ void test(const std::vector<double>& ts, const std::vector<double> &ds)
 	const std::vector<double> Ks{80, 100, 120};
 	const std::vector<double> vols{0.3, 0.6};
 	const std::vector<double> Ts{0.25, 1.0};
-
+#if TEST_GREEKS
+	fprintf(stdout, "%10s%10s%10s%10s%10s\n",
+		"tv", "delta", "gamma", "vega", "theta");
+#else
 	fprintf(stdout, "%10s%10s%10s%10s%10s%10s%10s%15s\n", 
 		"K", "vol", "T", "Black76", "MC", "Pricer1", "Pricer2", "(MC-Pricer2)%");
+#endif
+
 	for (const auto K : Ks)
 		for (const auto vol : vols)
 			for (const auto T : Ts)
@@ -65,7 +72,7 @@ void test(const std::vector<double>& ts, const std::vector<double> &ds)
 void testOne(const std::vector<double>& ts, const std::vector<double> &ds, 
 			double K, double vol, double T)
 {	
-	constexpr int cp = -1;
+	constexpr int cp = 1;
 	constexpr double S0 = 100;
 	constexpr double r = 0.02;
 	constexpr double netrate = 0.01;	// r - q
@@ -84,9 +91,15 @@ void testOne(const std::vector<double>& ts, const std::vector<double> &ds,
 
 	EuropeanDivPricer2 pricer2(cp, K, vol, S0, T, r, netrate, ts, ds);
 
+#if TEST_GREEKS
+	EuropeanDivPricer::Result res = pricer1.results();
+	fprintf(stdout, "%10f%10f%10f%10f%10f\n", 
+		res.tv_, res.delta_, res.gamma_, res.vega_, res.theta_);
+#else
 	fprintf(stdout, "%10.2f%10.2f%10.2f%10f%10f%10f%10f%15.1f\n",
 		K, vol, T, black.tv(), mc.tv(), pricer1.tv(), pricer2.tv(), 
 		(pricer2.tv() - mc.tv())/std::max(1e-6, pricer2.tv())*100);
+#endif
 }
 
 
@@ -272,6 +285,7 @@ double EuropeanDivPricer1::tv()
 }
 
 
+
 EuropeanDivPricer2::EuropeanDivPricer2(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, const std::vector<double>& ds) : 
 	EuropeanDivPricer(cp, K, vol, S0, T, r, netrate, ts, ds)
@@ -350,3 +364,85 @@ double EuropeanDivPricer2::tv()
 	applyParityIfNeeded();
 	return tv0_;
 }
+
+
+EuropeanDivPricer::Result EuropeanDivPricer2::results()
+{
+	Result res;
+	res.tv_ = tv();
+
+	{
+		// delta, gamma
+		const double ds = S0_ * 0.001;
+		EuropeanDivPricer2 p1(cp_, K_, vol_, S0_ + ds, T_, r_, netrate_, ts_, ds_);
+		const double tv1 = p1.tv();
+		EuropeanDivPricer2 p2(cp_, K_, vol_, S0_ - ds, T_, r_, netrate_, ts_, ds_);
+		const double tv2 = p2.tv();
+		res.delta_ = (tv1 - tv2) / (2 * ds);
+		res.gamma_ = (tv1 + tv2 - 2 * res.tv_) / (ds * ds);		
+	}
+
+	{
+		// vega
+		const double dvol = std::min(0.01 * vol_, 0.0025);
+		EuropeanDivPricer2 p1(cp_, K_, vol_ + dvol, S0_, T_, r_, netrate_, ts_, ds_);
+		const double tv1 = p1.tv();
+		EuropeanDivPricer2 p2(cp_, K_, vol_ - dvol, S0_, T_, r_, netrate_, ts_, ds_);
+		const double tv2 = p2.tv();
+		res.delta_ = (tv1 - tv2) / (2 * dvol);
+	}
+
+	{
+		// theta
+		const double dt = std::min({0.004, 0.01 * T_, 0.9 * ts_[0]});
+		std::vector<double> ts(ts_);
+		for (size_t i = 0; i < ts.size(); i++)
+			ts[i] -= dt;
+		EuropeanDivPricer2 p1(cp_, K_, vol_, S0_, T_ - dt, r_, netrate_, ts, ds_);
+		const double tv1 = p1.tv();
+		res.theta_ = (tv1 - res.tv_) / dt;
+	}
+	return res;
+}
+
+
+EuropeanDivPricer::Result EuropeanDivPricer1::results()
+{
+	Result res;
+	res.tv_ = tv();
+
+	{
+		// delta, gamma
+		const double ds = S0_ * 0.001;
+		EuropeanDivPricer1 p1(cp_, K_, vol_, S0_ + ds, T_, r_, netrate_, ts_, ds_);
+		const double tv1 = p1.tv();
+		EuropeanDivPricer1 p2(cp_, K_, vol_, S0_ - ds, T_, r_, netrate_, ts_, ds_);
+		const double tv2 = p2.tv();
+		res.delta_ = (tv1 - tv2) / (2 * ds);
+		res.gamma_ = (tv1 + tv2 - 2 * res.tv_) / (ds * ds);		
+	}
+
+	{
+		// one-vol vega
+		const double dvol = std::min(0.01 * vol_, 0.0025);
+		EuropeanDivPricer1 p1(cp_, K_, vol_ + dvol, S0_, T_, r_, netrate_, ts_, ds_);
+		const double tv1 = p1.tv();
+		EuropeanDivPricer1 p2(cp_, K_, vol_ - dvol, S0_, T_, r_, netrate_, ts_, ds_);
+		const double tv2 = p2.tv();
+		res.vega_ = (tv1 - tv2) / (2 * dvol) * 0.01;
+	}
+
+	{
+		// one-day theta
+		const double dt = std::min({0.004, 0.01 * T_, 0.9 * ts_[0]});
+		std::vector<double> ts(ts_);
+		for (size_t i = 0; i < ts.size(); i++)
+			ts[i] -= dt;
+		EuropeanDivPricer1 p1(cp_, K_, vol_, S0_, T_ - dt, r_, netrate_, ts, ds_);
+		const double tv1 = p1.tv();
+		res.theta_ = (tv1 - res.tv_) / dt / 365.25;
+	}
+	return res;
+}
+
+

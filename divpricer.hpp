@@ -44,11 +44,17 @@ struct MonteCarloPricer {
 // base class
 struct EuropeanDivPricer {
 
+	struct Result {
+		double tv_, delta_, gamma_, vega_, theta_;
+	};
+
 	EuropeanDivPricer(int cp, double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, 
 	const std::vector<double>& ds);
 
 	virtual double tv() = 0;
+
+	virtual Result results() = 0;
 
 	virtual void initialize();
 
@@ -72,6 +78,8 @@ struct EuropeanDivPricer1 : public EuropeanDivPricer {
 
 	double tv() override;
 
+	Result results() override;
+
 	void initialize() override;
 
 	// d1 = vol * sqrtt - zstar
@@ -85,6 +93,8 @@ struct EuropeanDivPricer2 : public EuropeanDivPricer {
 	const std::vector<double>& ds);
 
 	double tv() override;
+
+	Result results() override;
 
 	void initialize() override;
 
