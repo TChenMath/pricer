@@ -41,7 +41,7 @@ void test(const std::vector<double>& ts, const std::vector<double> &ds)
 	double T  = 0.25;
 	double r = 0.02;
 	double netrate = 0.02;	// r - q
-	size_t npath = 100000;
+	size_t npath = 200000;
 
 	EuropeanDivPricer1 pricer1(K, vol, S0, T, r, netrate, ts, ds);
 
@@ -49,7 +49,7 @@ void test(const std::vector<double>& ts, const std::vector<double> &ds)
 
 	MonteCarloPricer mc(K, vol, S0, T, r, netrate, ts, ds, npath);
 
-	std::cout << "black tv " << black.tv() << " mc tv " << mc.tv() << " div tv " << pricer1.tv() << "\n";
+	std::cout << "black tv " << black.tv() << " mc tv " << mc.tv() << " pricer1 tv " << pricer1.tv() << "\n";
 }
 
 
@@ -81,23 +81,36 @@ double BlackPricer::tv()
 
 double MonteCarloPricer::tv()
 {
-	const double sqrtt = std::sqrt(T_);
-
 	std::default_random_engine generator(123);
 	std::normal_distribution<double> dist(0, 1);
+
+	const size_t ndiv = ts_.size();
+	// W_T - W_{t_i}
+	std::vector<double> ws(ndiv);
 	double payoff = 0.0;
+	double z;
+
 	for (size_t n=0; n < npath_; n++) {
-		double z = dist(generator);
-		double res = S0_ * std::exp((netrate_ - vol_ * vol_ / 2) * T_ + vol_ * sqrtt * z);
-		//std::cout << z << " " << vol_ << " " << sqrtt << " " << std::exp(vol_ * sqrtt * z) << " " << res << "\n";
-		for (size_t i = 0; i < ts_.size(); i++) {
-			double t = ts_[i];
-			double tau = T_ - t;
-			res -= ds_[i] * std::exp((netrate_ - vol_ * vol_ / 2) * tau + 
-				0.5 * vol_ * vol_ * t  * tau / T_ + vol_ * tau / sqrtt * z);
+		// prepare Ws
+		z = dist(generator);
+		ws[ndiv-1] = z * std::sqrt(T_ - ts_[ndiv-1]);
+		// backwards
+		for (size_t i = ndiv - 1; i-- > 0;) {
+			z = dist(generator);
+			ws[i] = ws[i+1] + z * std::sqrt(ts_[i+1] - ts_[i]);
+		}
+		// W_T
+		z = dist(generator);
+		const double wt = ws[0] + z * std::sqrt(ts_[0]);
+		// S_T
+		double res = S0_ * std::exp((netrate_ - vol_ * vol_ / 2) * T_ + vol_ * wt);
+		for (size_t i = 0; i < ndiv; i++) {
+			double tau = T_ - ts_[i];
+			res -= ds_[i] * std::exp((netrate_ - vol_ * vol_ / 2) * tau + vol_ * ws[i]);
 		}
 		payoff += std::max(0.0, res - K_);
 	}
+
 	double df = std::exp(-r_ * T_);
 	return df * payoff / npath_;
 }
