@@ -116,30 +116,12 @@ double MonteCarloPricer::tv()
 }
 
 
-double EuropeanDivPricer1::tv()
-{
-	const double sqrtt = std::sqrt(T_);
-
-	tv0_ = S0_ * std::exp(netrate_ * T_) * Math::normalCDF(d1_);
-	for (size_t i = 0; i < ts_.size(); i++) {
-		double t = ts_[i];
-		double tau = T_ - t;
-		tv0_ -= ds_[i] * std::exp(netrate_ * tau) * 
-			Math::normalCDF(d1_ - vol_ * t / sqrtt);
-	}
-	tv0_ -= K_ * Math::normalCDF(d1_ - vol_ * sqrtt);
-	double df = std::exp(-r_ * T_);
-	tv0_ *= df;
-	// cap/floor with theo bounds
-	double lbd = std::max(0.0, df * (fwd_ - K_));
-	tv0_ = std::min(std::max(lbd, tv0_), S0_ * std::exp(netrate_ - r_) * T_);
-	return tv0_;
-}
-
-
-EuropeanDivPricer1::EuropeanDivPricer1(double K, double vol, double S0, double T, 
+EuropeanDivPricer::EuropeanDivPricer(double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, const std::vector<double>& ds) : 
 	K_(K), vol_(vol), S0_(S0), T_(T), r_(r), netrate_(netrate), ts_(ts), ds_(ds)
+{}
+
+void EuropeanDivPricer::initialize()
 {
 	const double sqrtt = std::sqrt(T_);
 
@@ -170,13 +152,11 @@ EuropeanDivPricer1::EuropeanDivPricer1(double K, double vol, double S0, double T
 
 	constexpr int maxIter = 20;
 	constexpr double tol = 1e-6;
-	double zstar;
-	int niter = Math::newtonSolve(f, fp, maxIter, tol, z0, zstar);
+	int niter = Math::newtonSolve(f, fp, maxIter, tol, z0, zstar_);
 	if (niter < 0)
 		std::cout << "unable to solve for zstar\n";
 
-	//std::cout << "z0 " << z0 << " zstar " << zstar << " niter " << niter << "\n";
-	d1_ = vol_ * sqrtt - zstar;
+	//std::cout << "z0 " << z0 << " zstar " << zstar_ << " niter " << niter << "\n";
 
 	fwd_ = S0_ * std::exp(netrate_ * T_);
 	for (size_t i = 0; i < ts_.size(); i++) {
@@ -186,5 +166,63 @@ EuropeanDivPricer1::EuropeanDivPricer1(double K, double vol, double S0, double T
 	}
 	if (fwd_ < 1e-10)
 		std::cout << "negative fwd " << fwd_ << "\n";
+}
 
+EuropeanDivPricer1::EuropeanDivPricer1(double K, double vol, double S0, double T, 
+	double r, double netrate, const std::vector<double>& ts, const std::vector<double>& ds) : 
+	EuropeanDivPricer(K, vol, S0, T, r, netrate, ts, ds)
+{}
+
+void EuropeanDivPricer1::initialize()
+{
+	EuropeanDivPricer::initialize();
+	d1_ = vol_ * std::sqrt(T_) - zstar_;
+}
+
+double EuropeanDivPricer1::tv()
+{
+	initialize();
+
+	const double sqrtt = std::sqrt(T_);
+
+	tv0_ = S0_ * std::exp(netrate_ * T_) * Math::normalCDF(d1_);
+	for (size_t i = 0; i < ts_.size(); i++) {
+		double t = ts_[i];
+		double tau = T_ - t;
+		tv0_ -= ds_[i] * std::exp(netrate_ * tau) * 
+			Math::normalCDF(d1_ - vol_ * t / sqrtt);
+	}
+	tv0_ -= K_ * Math::normalCDF(d1_ - vol_ * sqrtt);
+	double df = std::exp(-r_ * T_);
+	tv0_ *= df;
+	// cap/floor with theo bounds
+	double lbd = std::max(0.0, df * (fwd_ - K_));
+	tv0_ = std::min(std::max(lbd, tv0_), S0_ * std::exp(netrate_ - r_) * T_);
+	return tv0_;
+}
+
+
+EuropeanDivPricer2::EuropeanDivPricer2(double K, double vol, double S0, double T, 
+	double r, double netrate, const std::vector<double>& ts, const std::vector<double>& ds) : 
+	EuropeanDivPricer(K, vol, S0, T, r, netrate, ts, ds)
+{}
+
+void EuropeanDivPricer2::initialize() 
+{
+	EuropeanDivPricer::initialize();
+}
+
+double EuropeanDivPricer2::tv()
+{
+	initialize();
+
+	size_t ndiv = ts_.size();
+	std::vector<double> dstars(ndiv);
+
+	for (size_t i = 0; i < ts_.size(); i++) {
+		double t = ts_[i];
+		double tau = T_ - t;
+	}
+
+	return tv0_;
 }

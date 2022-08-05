@@ -39,18 +39,49 @@ struct MonteCarloPricer {
 	size_t npath_;
 };
 
-struct EuropeanDivPricer1 {
+// base class
+struct EuropeanDivPricer {
+
+	EuropeanDivPricer(double K, double vol, double S0, double T, 
+	double r, double netrate, const std::vector<double>& ts, 
+	const std::vector<double>& ds);
+
+	virtual double tv() = 0;
+
+	virtual void initialize();
+
+	double K_, vol_, S0_, T_, r_, netrate_;
+	std::vector<double> ts_, ds_;	// TBD: can be const reference
+	// d1 = vol * sqrtt - zstar
+	double zstar_, fwd_;
+	double tv0_;
+};
+
+struct EuropeanDivPricer1 : public EuropeanDivPricer {
 
 	EuropeanDivPricer1(double K, double vol, double S0, double T, 
 	double r, double netrate, const std::vector<double>& ts, 
 	const std::vector<double>& ds);
 
-	double tv();
+	double tv() override;
 
-	double K_, vol_, S0_, T_, r_, netrate_;
-	std::vector<double> ts_, ds_;	// TBD: can be const reference
-	double d1_, fwd_;
-	double tv0_;
+	void initialize() override;
+
+	// d1 = vol * sqrtt - zstar
+	double d1_;
+};
+
+struct EuropeanDivPricer2 : public EuropeanDivPricer {
+
+	EuropeanDivPricer2(double K, double vol, double S0, double T, 
+	double r, double netrate, const std::vector<double>& ts, 
+	const std::vector<double>& ds);
+
+	double tv() override;
+
+	void initialize() override;
+
+	double ustar_;
 };
 
 #endif
