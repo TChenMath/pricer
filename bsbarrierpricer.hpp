@@ -124,6 +124,7 @@ protected:
 		double T,
 		double L,
 		double U,
+		bool is_window_barrier,
 		std::vector<double>& s,
 		size_t& idx);
 

@@ -10,26 +10,25 @@ void BSWindowBarrierPricer::test()
 {
 	// parameters per Table 1 from "Window Double Barrier Options" by Tristan
 	// Table 1 wbarrier prices incorrect, thought formula produces values consistent with FD scheme
-
-	double S0 = 3191.23;
-	double K = 3125;
-	double r = 0.02;
-	double q = 0.0;
-	double sigmas[] = {0.2, 0.25, 0.32, 0.44};
-	double T = 0.175342;
-	double Ls[] = {2850, 70, 60};
-	double Us[] = {9120, 130, 140};
-	double T1 = 0.0;
-	double T2 = 0.02;
+	double S0 = 100;
+	double K = 100;
+	double r = 0.05;
+	double q = 0.02;
+	double sigmas[] = {0.18, 0.25, 0.32, 0.44};
+	double T = 1.5;
+	double Ls[] = {80, 70, 60};
+	double Us[] = {120, 130, 140};
+	double T1 = 0.5;
+	double T2 = 1.0;
 	int theta = -1;
 	
 	// convergence test
 	std::cout << "\nconvergence test for window barrier\n";
 	std::cout << "===================================\n";
 	fprintf(stdout, "%10s %10s %10s %10s\n", "accuracy", "npv", "npv0", "err");
-	double sigma = sigmas[0];
-	double L = Ls[0];
-	double U = Us[0];
+	double sigma = sigmas[3];
+	double L = Ls[2];
+	double U = Us[2];
 	double npv0 = calculate(S0, K, r, q, sigma, T, theta, L, U, T1, T2, 16);
 	
 	int accuracy = 1;
@@ -83,7 +82,7 @@ double BSWindowBarrierPricer::calculate(
 	std::vector<double> s(ns);
 	// s0_idx is the index for S0
 	size_t s0_idx;
-	set_space_grids(S0, K, r, q, sigma, T, L, U, s, s0_idx);
+	set_space_grids(S0, K, r, q, sigma, T, L, U, true, s, s0_idx);
 	
 	// time grids, mostly regular dt except around T1, T2
 	// in particular, T1, T2 are on grids
@@ -197,23 +196,23 @@ void BSWindowBarrierPricer::apply_barriers(
 
 void BSBarrierPricer::test()
 {
-	double S0 = 3190.93;
-	double K = 3150;
-	double r = 0.0;
-	double q = 0.0;
-	double sigmas[] = {0.2, 0.25, 0.32, 0.44};
-	double T = 0.0328767;
-	double Ls[] = {2850, 70, 60};
-	double Us[] = {9120, 130, 140};
+	double S0 = 100;
+	double K = 100;
+	double r = 0.05;
+	double q = 0.02;
+	double sigmas[] = {0.18, 0.25, 0.32, 0.44};
+	double T = 1.5;
+	double Ls[] = {80, 70, 60};
+	double Us[] = {120, 130, 140};
 	int theta = -1;
 	
 	// convergence test
 	std::cout << "\nconvergence test for barrier\n";
 	std::cout << "============================\n";
 	fprintf(stdout, "%10s %10s %10s %10s\n", "accuracy", "npv", "npv0", "err");
-	double sigma = sigmas[0];
-	double L = Ls[0];
-	double U = Us[0];
+	double sigma = sigmas[3];
+	double L = Ls[2];
+	double U = Us[2];
 	double npv0 = calculate(S0, K, r, q, sigma, T, theta, L, U, 16);
 	
 	int accuracy = 1;
@@ -267,7 +266,7 @@ double BSBarrierPricer::calculate(
 	std::vector<double> s(ns);
 	// idx is the index for S0
 	size_t s0_idx;
-	set_space_grids(S0, K, r, q, sigma, T, L, U, s, s0_idx);
+	set_space_grids(S0, K, r, q, sigma, T, L, U, false, s, s0_idx);
 	
 	// time grids
 	size_t nt = accuracy * std::min(50*1.5, 50+2*T);
@@ -420,14 +419,20 @@ void BSBarrierPricer::set_space_grids(
 		double T,
 		double L,
 		double U,
+        bool is_window_barrier,
 		std::vector<double>& s,
 		size_t& idx)
 {
 	double smin, smax;
-	set_space_range(S0, K, r, q, sigma, T, smin, smax);
-	smin = std::min(0.8*L, smin);
-	smax = std::max(1.2*U, smax);
-	
+    if (is_window_barrier) {
+	   set_space_range(S0, K, r, q, sigma, T, smin, smax);
+	   smin = std::min(0.8*L, smin);
+	   smax = std::max(1.2*U, smax);
+    } else {
+        smin = L;
+        smax = U;
+	}
+
 	std::vector<double> critical_points(3);
 	critical_points[0] = K;
 	critical_points[1] = L;
@@ -435,11 +440,13 @@ void BSBarrierPricer::set_space_grids(
 	
 	FDGridHelper::set_concentrated_grids(smin, smax, critical_points, s);
 	
-	// shit so that S0, L, U are on grid
+	// shift so that S0, L, U are on grid
 	// critical to achieve 2nd-order convergence
-	idx = adjust_grids(S0, s);	
-	size_t l_idx = adjust_grids(L, s);
-	size_t u_idx = adjust_grids(U, s);
+	idx = adjust_grids(S0, s);
+    if (is_window_barrier) {
+        size_t l_idx = adjust_grids(L, s);
+        size_t u_idx = adjust_grids(U, s);
+    }
 	
 #ifdef DEBUG
 	std::cout << "smin " << smin << " smax " << smax << " ns " << s.size() << "\n";
